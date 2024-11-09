@@ -1,2 +1,2 @@
 # autoencoder
-Detecting outliers in a numerical tabular dataset using an autoencoder
+Detecting outliers in tabular data with an autoencoder
