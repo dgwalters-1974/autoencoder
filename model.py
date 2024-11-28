@@ -7,6 +7,13 @@ from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 import streamlit as st
 
+
+"""
+This file contains the model code along with some plotting functions
+
+"""
+
+
 def run_model(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'):
     """
     Function to load data from .csv file and run 
@@ -133,6 +140,27 @@ def run_model(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_Sma
     
     return results_overall
 
+def plot_contributions(results, currency):
+    
+    fc_list = []
+    for item in results[currency]['Feature_Contributions']:
+         fc_list.append(item)
+         
+    df = pd.DataFrame(fc_list)
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    fig.suptitle('Contributions to reconstruction error from underlying indices')
+
+    # Plot the main line for the feature
+    for columns in df:
+        plt.plot(df.index, df[columns], label=columns, alpha=0.7, linewidth=1.5)
+    plt.legend()
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+    
+    return plt
+    
+    
 
 
 def plot_results_once(plot_data, currency, anomalies):

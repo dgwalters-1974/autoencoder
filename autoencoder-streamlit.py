@@ -1,5 +1,5 @@
 import streamlit as st
-from model import run_model, plot_anomaly_comparison, plot_results_once
+from model import run_model, plot_anomaly_comparison, plot_results_once, plot_contributions
 
 currency_choice = ['EUR', 'USD', 'JPY', 'AUD', 'NZD', 'CAD']
 
@@ -38,4 +38,7 @@ if uploaded_file is not None:
     st.header('Autoencoder')
     st.pyplot(plot_anomaly_comparison(results, curr))
     st.pyplot(plot_results_once(plot_choice, chart_choice, results[chart_choice]))
+    
+    st.pyplot(plot_contributions(results, chart_choice))
+
 
