@@ -206,7 +206,7 @@ def run_model_skl(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings
         return distances
 
     # Set the detection method here
-    method = "IsolationForest"  # Options: 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'
+    method = "LOF"  # Options: 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'
 
     #results_overall = {}  # Dictionary to store results for each currency
 
@@ -385,8 +385,8 @@ def plot_anomaly_breakdown(currency, results_overall):
             feature_contributions[column],
             label=column,
             color=colors[i],
-            alpha=0.8,
-            width=0.8,
+            alpha=1,
+            width=1,
         )
         axes[i].set_ylabel(column, fontsize=10)
         axes[i].tick_params(axis="y", labelsize=10)

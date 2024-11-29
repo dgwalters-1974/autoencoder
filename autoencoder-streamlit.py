@@ -10,6 +10,9 @@ with st.sidebar:
 
 with st.sidebar:    
     curr = st.multiselect('Choose currencies...', currency_choice, currency_choice)
+ 
+with st.sidebar:
+    model_choice = st.selectbox('Choose model...', ['Autoencoder', 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'])
     
 with st.sidebar:
     chart_choice = st.selectbox('Choose plot currency...', currency_choice)
