@@ -167,7 +167,7 @@ def run_model(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_Sma
     
     return results_overall
 
-def run_model_skl(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'):
+def run_model_skl(mod: str, file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'):
     
     """
     Function to load data from .csv file and run 
@@ -206,7 +206,7 @@ def run_model_skl(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings
         return distances
 
     # Set the detection method here
-    method = "LOF"  # Options: 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'
+    method = mod  # Options: 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'
 
     #results_overall = {}  # Dictionary to store results for each currency
 
@@ -308,7 +308,7 @@ def plot_results_once(plot_data, currency, anomalies):
 
         # Plot the main line for the feature
         axs[i].plot(currency_data.index, currency_data[feature], label=feature, color='steelblue', alpha=0.7, linewidth=1.5)
-        fig.suptitle(f"\n{currency} fixings vs Date with Anomalies Highlighted", fontsize=14, fontweight='bold', y=1.02)
+        fig.suptitle(f"\n{currency} fixings vs Date with Anomalies Highlighted", fontsize=14, fontweight='bold', y=0.98)
         #fig.subplots_adjust(top=0.6)
         
         # Highlight anomalies
@@ -323,7 +323,7 @@ def plot_results_once(plot_data, currency, anomalies):
         #plt.ylabel(feature, fontsize=12)
         axs[i].legend()
         axs[i].grid(alpha=0.3)
-        plt.tight_layout()
+        #plt.tight_layout()
 
     return plt
 
@@ -367,7 +367,7 @@ def plot_anomaly_breakdown(currency, results_overall):
     anomaly_scores = results['Anomaly_Score']  # Anomaly scores are plotted on the top axis
     feature_contributions = pd.DataFrame(results['Feature_Contributions'].tolist())
 
-        # Number of features
+    # Number of features
     n_features = feature_contributions.shape[1]
 
     # Create subplots: one for anomaly scores and one for each feature's contribution
