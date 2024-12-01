@@ -14,63 +14,61 @@ from sklearn.preprocessing import MinMaxScaler
 from scipy.spatial.distance import mahalanobis
 
 
+
 """
+
 This file contains the model code along with some plotting functions
 
 """
 
 
-def run_model(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'):
+
+def run_model(
+    method: str,
+    file_path: str = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'
+):
     """
-    Function to load data from .csv file and run 
-    autoencoder for selection of currencies. Outputs 
-    a dictionary of results.
+    Loads data, preprocesses it, and performs anomaly detection using either a PyTorch-based autoencoder
+    or sklearn-based models for a set of currencies.
+    
+    Parameters:
+        method (str): The anomaly detection method. Options include:
+            - "Autoencoder" for PyTorch-based autoencoder
+            - "IsolationForest", "KNN", "LOF", "OCSVM", "Mahalanobis" for sklearn-based methods
+        file_path (str): Path to the CSV file containing the dataset.
+
+    Returns:
+        dict: A dictionary with results for each currency.
     """
+
+    # Set random seed
     torch.manual_seed(0)
 
-    results_overall = {}
-
-    # Load the dataset
-    #file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'
+    # Load and preprocess the dataset
     data = pd.read_csv(file_path)
-
-    # Preprocessing: Convert 'Date' to datetime and set it as index
     data['Date'] = pd.to_datetime(data['Date'], format='%d-%b-%y')
     data.set_index('Date', inplace=True)
-
-    # Compute daily differences
     data_daily_diff = data.diff().dropna()
 
-    results_overall['data'] = data
-    results_overall['data_diff'] = data_daily_diff
-    
-    
-    currencies = ['JPY', 'EUR', 'USD', 'AUD', 'NZD', 'CAD', 'GBP']
+    results_overall = {'data': data, 'data_diff': data_daily_diff}
 
-    for currency in currencies:
+    # Define currencies
+    currencies = [
+        'AED', 'AUD', 'CAD', 'CHF', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP',
+        'HUF', 'JPY', 'NOK', 'NZD', 'PLN', 'RUB', 'SEK', 'SGD', 'THB',
+        'TRY', 'USD'
+    ]
 
-        # Subset the dataset for columns containing 'currency'
-        currency_data = data[[col for col in data.columns if currency in col]]
+    # Helper functions
+    def compute_mahalanobis(data):
+        """Computes Mahalanobis distance for each data point."""
+        mean_vec = np.mean(data, axis=0)
+        cov_matrix = np.cov(data, rowvar=False)
+        inv_cov_matrix = np.linalg.inv(cov_matrix)
+        return [mahalanobis(row, mean_vec, inv_cov_matrix) for row in data]
 
-        # Compute daily differences
-        currency_daily_diff = currency_data.diff().dropna()
-
-        # Normalize the data
-        scaler = MinMaxScaler()
-        normalized_currency_data = scaler.fit_transform(currency_daily_diff)
-
-        # Convert to PyTorch tensors
-        currency_tensor = torch.tensor(normalized_currency_data, dtype=torch.float32)
-
-        # Split data into training and testing sets
-        train_size = int(0.8 * len(currency_tensor))
-        test_size = len(currency_tensor) - train_size
-        train_data, test_data = torch.utils.data.random_split(currency_tensor, [train_size, test_size])
-
-        train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
-        test_loader = DataLoader(test_data, batch_size=32, shuffle=False)
-
-        # Define the autoencoder architecture (ix32)(32x4)(4x32)(32xi)
+    def train_autoencoder(data, input_dim):
+        """Trains a PyTorch autoencoder and computes reconstruction errors."""
         class Autoencoder(nn.Module):
             def __init__(self, input_dim):
                 super(Autoencoder, self).__init__()
@@ -88,189 +86,93 @@ def run_model(file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_Sma
                 )
 
             def forward(self, x):
-                encoded = self.encoder(x)
-                decoded = self.decoder(encoded)
-                return decoded
+                return self.decoder(self.encoder(x))
 
-        # Instantiate the autoencoder
-        input_dim = currency_tensor.shape[1]
-        autoencoder = Autoencoder(input_dim)
-
-        # Define the optimizer and loss function
+        # Initialize the autoencoder, optimizer, and loss function
+        autoencoder = Autoencoder(input_dim=input_dim)
         optimizer = torch.optim.Adam(autoencoder.parameters(), lr=0.001)
         criterion = nn.MSELoss()
 
+        # Prepare data loaders
+        tensor_data = torch.tensor(data, dtype=torch.float32)
+        train_size = int(0.8 * len(tensor_data))
+        train_data, _ = torch.utils.data.random_split(tensor_data, [train_size, len(tensor_data) - train_size])
+        train_loader = DataLoader(train_data, batch_size=32, shuffle=True)
+
         # Train the autoencoder
-        num_epochs = 50
-        for epoch in range(num_epochs):
+        for epoch in range(50):
             autoencoder.train()
-            train_loss = 0
             for batch in train_loader:
                 optimizer.zero_grad()
-                reconstructed = autoencoder(batch)
-                loss = criterion(reconstructed, batch)
+                loss = criterion(autoencoder(batch), batch)
                 loss.backward()
                 optimizer.step()
-                train_loss += loss.item()
-            train_loss /= len(train_loader)
-            if epoch % 10 == 0:
-                print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.6f}")
 
-        # Compute reconstruction errors on the entire dataset
+        # Compute reconstruction errors
         autoencoder.eval()
         with torch.no_grad():
-            reconstructed_currency_data = autoencoder(currency_tensor)
-            reconstruction_errors = torch.mean((currency_tensor - reconstructed_currency_data) ** 2, dim=1).numpy()
+            reconstructed = autoencoder(tensor_data)
+            errors = torch.mean((tensor_data - reconstructed) ** 2, dim=1).numpy()
 
-        # # Identify anomalies (reconstruction error > 95th percentile)
-        # threshold = np.percentile(reconstruction_errors, 95)
-        # anomalies_indices = np.where(reconstruction_errors > threshold)[0]
+        return errors
 
-        # # Extract anomalies and add reconstruction errors
-        # anomalies = currency_daily_diff.iloc[anomalies_indices].copy()
-        # anomalies['Reconstruction_Error'] = reconstruction_errors[anomalies_indices]
-
-        # # Calculate feature contributions based on reconstruction differences
-        # contributions = np.abs(currency_tensor.numpy() - reconstructed_currency_data.numpy())
-        # feature_contributions = [dict(zip(currency_daily_diff.columns, contrib)) for contrib in contributions[anomalies_indices]]
-
-        # # Add feature contributions to the anomalies dataframe
-        # anomalies['Feature_Contributions'] = feature_contributions
-
-        # # Prepare the final anomalies table
-        # result_table = anomalies.reset_index()[['Date', 'Reconstruction_Error', 'Feature_Contributions']]
-
-        # results_overall[currency] = result_table.sort_values('Date')
-        
-        # Determine the anomaly threshold
-        threshold = np.percentile(reconstruction_errors, 95)
-        # Identify anomalies (reconstruction error > 95th percentile)
-        is_anomaly = reconstruction_errors > threshold
-
-        # Extract all data with reconstruction errors and anomaly flags
-        all_data = currency_daily_diff.copy()
-        all_data['Anomaly_Score'] = reconstruction_errors
-        all_data['Is_Anomaly'] = is_anomaly
-
-        # Calculate feature contributions based on reconstruction differences
-        contributions = np.abs(currency_tensor.numpy() - reconstructed_currency_data.numpy())
-        feature_contributions = [dict(zip(currency_daily_diff.columns, contrib)) for contrib in contributions]
-
-        # Add feature contributions to the DataFrame
-        all_data['Feature_Contributions'] = feature_contributions
-
-        # Prepare the final results table
-        result_table = all_data.reset_index()[['Date', 'Anomaly_Score', 'Is_Anomaly', 'Feature_Contributions']]
-
-        # Save results to the dictionary
-        results_overall[currency] = result_table.sort_values('Date')
-    
-    return results_overall
-
-def run_model_skl(mod: str, file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'):
-    
-    """
-    Function to load data from .csv file and run 
-    autoencoder for selection of currencies. Outputs 
-    a dictionary of results.
-    """
-    torch.manual_seed(0)
-
-    results_overall = {}
-
-    # Load the dataset
-    #file_path = 'C:/Users/dgwal/autoencoder-sf/autoencoder/fixings_SmartXM_no empty_max indices.csv'
-    data = pd.read_csv(file_path)
-
-    # Preprocessing: Convert 'Date' to datetime and set it as index
-    data['Date'] = pd.to_datetime(data['Date'], format='%d-%b-%y')
-    data.set_index('Date', inplace=True)
-
-    # Compute daily differences
-    data_daily_diff = data.diff().dropna()
-
-    results_overall['data'] = data
-    results_overall['data_diff'] = data_daily_diff
-    
-    
-    currencies = ['JPY', 'EUR', 'USD', 'AUD', 'NZD', 'CAD', 'GBP']
-    
-    def compute_mahalanobis(data):
-        """
-        Computes Mahalanobis distance for each point in the dataset.
-        """
-        mean_vec = np.mean(data, axis=0)
-        cov_matrix = np.cov(data, rowvar=False)
-        inv_cov_matrix = np.linalg.inv(cov_matrix)
-        distances = [mahalanobis(row, mean_vec, inv_cov_matrix) for row in data]
-        return distances
-
-    # Set the detection method here
-    method = mod  # Options: 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'
-
-    #results_overall = {}  # Dictionary to store results for each currency
-
-    for currency in currencies:
-        # Subset the dataset for columns containing 'currency'
-        currency_data = data[[col for col in data.columns if currency in col]]
-
-        # Compute daily differences
-        currency_daily_diff = currency_data.diff().dropna()
-
-        # Normalize the data
-        scaler = MinMaxScaler()
-        normalized_currency_data = scaler.fit_transform(currency_daily_diff)
-
-        # Compute anomaly scores based on the chosen method
+    def get_anomaly_scores(method, data):
+        """Calculates anomaly scores using the specified method."""
         if method == "IsolationForest":
             model = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
-            model.fit(normalized_currency_data)
-            anomaly_scores = -model.decision_function(normalized_currency_data)
+            model.fit(data)
+            return -model.decision_function(data)
         elif method == "KNN":
-            k = 5  # Number of neighbors
-            nbrs = NearestNeighbors(n_neighbors=k).fit(normalized_currency_data)
-            distances, _ = nbrs.kneighbors(normalized_currency_data)
-            anomaly_scores = distances.mean(axis=1)  # Mean distance to k-nearest neighbors
+            k = 5
+            nbrs = NearestNeighbors(n_neighbors=k).fit(data)
+            distances, _ = nbrs.kneighbors(data)
+            return distances.mean(axis=1)
         elif method == "LOF":
             model = LocalOutlierFactor(n_neighbors=20, contamination=0.05, novelty=True)
-            model.fit(normalized_currency_data)
-            anomaly_scores = -model.decision_function(normalized_currency_data)
+            model.fit(data)
+            return -model.decision_function(data)
         elif method == "OCSVM":
             model = OneClassSVM(kernel='rbf', gamma='scale', nu=0.05)
-            model.fit(normalized_currency_data)
-            anomaly_scores = -model.decision_function(normalized_currency_data)
+            model.fit(data)
+            return -model.decision_function(data)
         elif method == "Mahalanobis":
-            anomaly_scores = compute_mahalanobis(normalized_currency_data)
+            return compute_mahalanobis(data)
         else:
-            raise ValueError(f"Unknown method: {method}. Choose from 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'.")
+            raise ValueError(f"Unknown method: {method}. Choose from 'Autoencoder', 'IsolationForest', 'KNN', 'LOF', 'OCSVM', 'Mahalanobis'.")
 
-        # Determine the anomaly threshold
+    # Process each currency
+    for currency in currencies:
+        # Subset and preprocess the data
+        currency_data = data[[col for col in data.columns if currency in col]].diff().dropna()
+        normalized_data = MinMaxScaler().fit_transform(currency_data)
+
+        # Get anomaly scores
+        if method == "Autoencoder":
+            anomaly_scores = train_autoencoder(normalized_data, input_dim=normalized_data.shape[1])
+        else:
+            anomaly_scores = get_anomaly_scores(method, normalized_data)
+
+        # Determine anomalies
         threshold = np.percentile(anomaly_scores, 95)
-
-        # Flag whether each point is an anomaly
         is_anomaly = anomaly_scores > threshold
 
-        # Calculate feature contributions (normalized deviations from the mean for all points)
-        feature_contributions = normalized_currency_data - np.mean(normalized_currency_data, axis=0)
-        feature_contributions = np.abs(feature_contributions)  # Absolute deviations for interpretability
-
-        # Convert feature contributions to dictionaries
+        # Compute feature contributions
+        feature_contributions = np.abs(normalized_data - np.mean(normalized_data, axis=0))
         feature_contributions_dicts = [
-            dict(zip(currency_daily_diff.columns, contrib)) for contrib in feature_contributions
+            dict(zip(currency_data.columns, contrib)) for contrib in feature_contributions
         ]
 
-        # Prepare the final results table
-        all_data = currency_daily_diff.copy()
+        # Prepare results
+        all_data = currency_data.copy()
         all_data['Anomaly_Score'] = anomaly_scores
-        all_data['Is_Anomaly'] = is_anomaly  # Add the anomaly flag column
+        all_data['Is_Anomaly'] = is_anomaly
         all_data['Feature_Contributions'] = feature_contributions_dicts
 
-        # Reset index and prepare the final table
-        result_table = all_data.reset_index()[['Date', 'Anomaly_Score', 'Is_Anomaly', 'Feature_Contributions']]
+        # Save results
+        results_overall[currency] = all_data.reset_index()[
+            ['Date', 'Anomaly_Score', 'Is_Anomaly', 'Feature_Contributions']
+        ].sort_values('Date')
 
-        # Save results to the dictionary
-        results_overall[currency] = result_table.sort_values('Date')
-        
     return results_overall
 
 
@@ -338,8 +240,9 @@ def plot_anomaly_comparison(results_dict: dict, currencies: list):
         # Plot the 'overall' anomaly scores to get an idea about relative behaviour of each currency
 
         plt.bar(range(len(overall_anomaly_score)), list(overall_anomaly_score.values()), align='center')
-        plt.xticks(range(len(overall_anomaly_score)), list(overall_anomaly_score.keys()))
+        plt.xticks(range(len(overall_anomaly_score)), list(overall_anomaly_score.keys()), rotation='vertical')
         plt.xlabel('Currency')
+        #plt.xticks(rotation='vertical')
         plt.ylabel('Overall Anomaly Score')
         plt.title('Overall Anomaly Score for Each Currency (mean of Anomaly Score)')
         
